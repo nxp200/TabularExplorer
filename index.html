@@ -132,6 +132,28 @@ header{height:52px;background:var(--bg-secondary);border-bottom:1px solid var(--
 
 /* Tab content */
 .tab-body{flex:1;overflow-y:auto;padding:16px 20px;}
+.tab-body.diagram-mode{padding:0;overflow:hidden;position:relative;}
+
+/* ── ER DIAGRAM ── */
+.diagram-wrap{position:absolute;inset:0;overflow:hidden;background:var(--bg-primary);cursor:default;}
+.diagram-svg{position:absolute;inset:0;pointer-events:none;overflow:visible;}
+.erd-entity{position:absolute;background:var(--bg-secondary);border:1.5px solid var(--border);border-radius:8px;width:210px;cursor:grab;user-select:none;box-shadow:0 4px 20px rgba(0,0,0,0.4);transition:box-shadow 0.15s;}
+.erd-entity:hover{box-shadow:0 6px 28px rgba(0,0,0,0.55);}
+.erd-entity.is-current{border-color:var(--accent);}
+.erd-entity.is-dragging{cursor:grabbing;box-shadow:0 10px 36px rgba(0,0,0,0.65);z-index:10;}
+.erd-header{padding:8px 11px;background:var(--bg-tertiary);border-bottom:1px solid var(--border);border-radius:7px 7px 0 0;display:flex;align-items:center;justify-content:space-between;cursor:pointer;gap:6px;}
+.erd-entity.is-current .erd-header{background:var(--accent-dim);}
+.erd-hname{font-weight:600;font-size:12px;color:var(--text-primary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.erd-htoggle{font-size:9px;color:var(--text-muted);flex-shrink:0;padding:1px 4px;border-radius:3px;background:var(--bg-panel);}
+.erd-cols-list{padding:3px 0 5px;}
+.erd-col{padding:3px 11px;font-size:11px;display:flex;align-items:center;gap:5px;color:var(--text-secondary);line-height:1.4;}
+.erd-col.is-rel{color:var(--text-primary);}
+.erd-col-icon{flex-shrink:0;opacity:0.7;}
+.erd-col-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.erd-col-type{font-size:9px;color:var(--text-muted);flex-shrink:0;}
+.erd-empty{padding:6px 11px 8px;font-size:10.5px;color:var(--text-muted);font-style:italic;}
+.diagram-hint{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--text-muted);background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:3px 10px;pointer-events:none;white-space:nowrap;}
+.diagram-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:13px;}
 
 /* Data table */
 .dtable{width:100%;border-collapse:collapse;font-size:12.5px;}
@@ -351,7 +373,8 @@ pre.query{background:var(--bg-primary);border:1px solid var(--border);border-rad
             <span class="desc" id="detailTableDesc"></span>
           </div>
           <div class="tabs" id="tabsBar">
-            <div class="tab active" data-tab="columns" onclick="switchTab('columns')">Columns <span class="tab-badge" id="badgeCols">0</span></div>
+            <div class="tab active" data-tab="diagram" onclick="switchTab('diagram')">Diagram</div>
+            <div class="tab" data-tab="columns" onclick="switchTab('columns')">Columns <span class="tab-badge" id="badgeCols">0</span></div>
             <div class="tab" data-tab="measures" onclick="switchTab('measures')">Measures <span class="tab-badge" id="badgeMeas">0</span></div>
             <div class="tab" data-tab="relationships" onclick="switchTab('relationships')">Relationships <span class="tab-badge" id="badgeRels">0</span></div>
             <div class="tab" data-tab="hierarchies" onclick="switchTab('hierarchies')">Hierarchies <span class="tab-badge" id="badgeHiers">0</span></div>
@@ -736,7 +759,9 @@ function toggleProps() {
 // ─────────────────────────────────────────────
 function selectTable(tableId) {
   S.selectedTableId = tableId;
-  S.currentTab = 'columns';
+  S.currentTab = 'diagram';
+  // Reset diagram positions when switching table
+  D.selId = null;
   renderTableList();
   const t = S.tables.find(x => x.ID === tableId);
   id('welcomeScreen').style.display = 'none';
@@ -756,8 +781,8 @@ function selectTable(tableId) {
   id('badgeHiers').textContent = hiers.length;
   id('badgeParts').textContent = parts.length;
 
-  document.querySelectorAll('.tab').forEach(el => el.classList.toggle('active', el.dataset.tab === 'columns'));
-  renderTab('columns');
+  document.querySelectorAll('.tab').forEach(el => el.classList.toggle('active', el.dataset.tab === 'diagram'));
+  renderTab('diagram');
 }
 
 // ─────────────────────────────────────────────
@@ -766,13 +791,16 @@ function selectTable(tableId) {
 function switchTab(tab) {
   S.currentTab = tab;
   document.querySelectorAll('.tab').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
+  id('tabBody').classList.toggle('diagram-mode', tab === 'diagram');
   renderTab(tab);
 }
 
 function renderTab(tab) {
   const tid = S.selectedTableId;
   const body = id('tabBody');
+  body.classList.toggle('diagram-mode', tab === 'diagram');
   switch(tab) {
+    case 'diagram':       renderDiagramView(tid);                        break;
     case 'columns':       body.innerHTML = renderColumns(colsFor(tid));  break;
     case 'measures':      body.innerHTML = renderMeasures(measFor(tid)); break;
     case 'relationships': body.innerHTML = renderRels(relsFor(tid));     break;
@@ -932,6 +960,245 @@ function renderParts(parts) {
     </div>
     ${p.QueryDefinition?`<pre class="query">${esc(p.QueryDefinition)}</pre>`:''}
   </div>`).join('');
+}
+
+// ─────────────────────────────────────────────
+// ER DIAGRAM ENGINE
+// ─────────────────────────────────────────────
+const ENTITY_W = 210;
+const HEADER_H = 36;
+const COL_H    = 22;
+const COL_PAD  = 8;
+
+// Diagram state — persists across tab switches for the same selected table
+const D = {
+  selId:     null,
+  positions: {},   // tableId -> {x, y}
+  expanded:  {}    // tableId -> boolean
+};
+
+// Columns in a table that participate in any relationship involving the current selected table
+function getRelCols(tableId, rels) {
+  const names = new Set();
+  rels.forEach(r => {
+    if (r.FromTableID == tableId) names.add(resolveColName(r.FromTableID, r.FromColumnID));
+    if (r.ToTableID   == tableId) names.add(resolveColName(r.ToTableID,   r.ToColumnID));
+  });
+  return colsFor(tableId).filter(c => names.has(c.Name));
+}
+
+// Approximate rendered height of one entity card
+function entityH(tableId, allRels) {
+  const relCols = getRelCols(tableId, allRels);
+  const rows = D.expanded[tableId]
+    ? colsFor(tableId).length
+    : (relCols.length || 1);          // at least 1 for the empty-state row
+  return HEADER_H + rows * COL_H + COL_PAD;
+}
+
+// Compute initial positions: selected table centered, others in a circle
+function initLayout(selId, entityIds, wrap) {
+  const W = wrap.clientWidth  || 700;
+  const H = wrap.clientHeight || 480;
+  const others = entityIds.filter(id => id != selId);
+  const positions = {};
+
+  positions[selId] = { x: W / 2 - ENTITY_W / 2, y: H / 2 - HEADER_H };
+
+  const radius = Math.min(W, H) * 0.36;
+  others.forEach((id, i) => {
+    const angle = (2 * Math.PI * i / others.length) - Math.PI / 2;
+    positions[id] = {
+      x: W / 2 - ENTITY_W / 2 + radius * Math.cos(angle),
+      y: H / 2 - HEADER_H     + radius * Math.sin(angle)
+    };
+  });
+  return positions;
+}
+
+// Draw SVG bezier lines for all relationships
+function drawLines(selId, rels) {
+  const svg = id('diagramSvg');
+  if (!svg) return;
+  const wrap = id('diagramWrap');
+  const W = wrap.clientWidth;
+  const H = wrap.clientHeight;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+  const cardLabel = m => {
+    if (m === 'ManyToOne')  return ['*', '1'];
+    if (m === 'OneToMany')  return ['1', '*'];
+    if (m === 'ManyToMany') return ['*', '*'];
+    return ['1', '1'];
+  };
+
+  const paths = rels.map(r => {
+    const fp = D.positions[r.FromTableID];
+    const tp = D.positions[r.ToTableID];
+    if (!fp || !tp) return '';
+
+    const fh  = entityH(r.FromTableID, rels);
+    const th  = entityH(r.ToTableID,   rels);
+    const fcx = fp.x + ENTITY_W / 2;
+    const tcx = tp.x + ENTITY_W / 2;
+
+    let x1, y1, x2, y2;
+    if (tcx >= fcx) {
+      x1 = fp.x + ENTITY_W; y1 = fp.y + fh / 2;
+      x2 = tp.x;             y2 = tp.y + th / 2;
+    } else {
+      x1 = fp.x;             y1 = fp.y + fh / 2;
+      x2 = tp.x + ENTITY_W; y2 = tp.y + th / 2;
+    }
+
+    const dx   = Math.abs(x2 - x1) * 0.55;
+    const c1x  = x1 + (tcx >= fcx ?  dx : -dx);
+    const c2x  = x2 + (tcx >= fcx ? -dx :  dx);
+    const [fl, tl] = cardLabel(r.Multiplicity);
+    const active   = r.IsActive !== false;
+    const stroke   = active ? '#4f8ef7' : '#555';
+    const dash     = active ? '' : ' stroke-dasharray="5,4"';
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+
+    return `<g>
+      <path d="M${x1},${y1} C${c1x},${y1} ${c2x},${y2} ${x2},${y2}"
+        stroke="${stroke}" stroke-width="1.5" fill="none" opacity="0.75"${dash}/>
+      <text x="${mx}" y="${my - 5}" text-anchor="middle"
+        font-size="9" fill="${stroke}" opacity="0.9" font-family="system-ui,sans-serif">${fl}:${tl}</text>
+    </g>`;
+  }).join('');
+
+  svg.innerHTML = paths;
+}
+
+// Render one entity card HTML string
+function renderEntityCard(tableId, selId, allRels) {
+  const t = S.tables.find(x => x.ID == tableId);
+  if (!t) return '';
+  const isExp     = !!D.expanded[tableId];
+  const isCurrent = tableId == selId;
+  const relCols   = getRelCols(tableId, allRels);
+  const relNames  = new Set(relCols.map(c => c.Name));
+  const dispCols  = isExp ? colsFor(tableId) : relCols;
+
+  const colRows = dispCols.map(c => {
+    const isRel = relNames.has(c.Name);
+    const icon  = isRel
+      ? `<svg class="erd-col-icon" width="8" height="8" viewBox="0 0 16 16" fill="currentColor" style="color:var(--accent)"><path d="M1 3.5A1.5 1.5 0 0 1 2.5 2h2.764c.958 0 1.76.56 2.311 1.184C7.985 3.648 8.48 4 9 4h4.5A1.5 1.5 0 0 1 15 5.5v7a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 12.5v-9z"/></svg>`
+      : `<span style="width:8px;display:inline-block;flex-shrink:0"></span>`;
+    return `<div class="erd-col${isRel ? ' is-rel' : ''}">
+      ${icon}
+      <span class="erd-col-name">${esc(c.Name)}</span>
+      <span class="erd-col-type">${esc(c.DataType || '')}</span>
+    </div>`;
+  }).join('');
+
+  const emptyRow = !dispCols.length
+    ? `<div class="erd-empty">no related columns</div>`
+    : '';
+
+  return `<div class="erd-entity${isCurrent ? ' is-current' : ''}" data-tid="${tableId}" style="left:0;top:0;z-index:1">
+    <div class="erd-header" data-tid="${tableId}">
+      <span class="erd-hname" title="${esc(t.Name)}">${esc(t.Name)}</span>
+      <span class="erd-htoggle">${isExp ? '▲' : '▼ all'}</span>
+    </div>
+    <div class="erd-cols-list">${colRows}${emptyRow}</div>
+  </div>`;
+}
+
+// Main entry: render diagram view into tabBody
+function renderDiagramView(selId) {
+  const body = id('tabBody');
+  const rels = relsFor(selId);
+
+  const entityIds = [...new Set([
+    selId,
+    ...rels.map(r => r.FromTableID),
+    ...rels.map(r => r.ToTableID)
+  ])];
+
+  body.innerHTML = `<div class="diagram-wrap" id="diagramWrap">
+    <svg class="diagram-svg" id="diagramSvg" width="100%" height="100%"></svg>
+    ${entityIds.map(tid => renderEntityCard(tid, selId, rels)).join('')}
+    <div class="diagram-hint">Click a table header to toggle columns &nbsp;·&nbsp; Drag entities to reposition</div>
+  </div>`;
+
+  // Compute layout if entering this table for the first time
+  if (D.selId !== selId || Object.keys(D.positions).length === 0) {
+    D.selId = selId;
+    D.positions = initLayout(selId, entityIds, id('diagramWrap'));
+  }
+
+  // Apply stored positions
+  entityIds.forEach(tid => {
+    const el = body.querySelector(`.erd-entity[data-tid="${tid}"]`);
+    if (el && D.positions[tid]) {
+      el.style.left = D.positions[tid].x + 'px';
+      el.style.top  = D.positions[tid].y + 'px';
+    }
+  });
+
+  drawLines(selId, rels);
+  initDiagramDrag(selId, rels);
+}
+
+// Toggle all-columns / key-only for an entity
+function toggleEntityExpand(tableId) {
+  D.expanded[tableId] = !D.expanded[tableId];
+  renderDiagramView(D.selId);
+}
+
+// Attach drag-and-drop handlers (with click vs drag discrimination)
+function initDiagramDrag(selId, rels) {
+  const wrap = id('diagramWrap');
+  if (!wrap) return;
+
+  let pending  = null;   // { el, tid, sx, sy, cx, cy }
+  let active   = null;   // same shape, confirmed drag
+  let didDrag  = false;
+
+  // Mousedown on any entity → start tentative drag
+  wrap.querySelectorAll('.erd-entity').forEach(el => {
+    el.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      const tid = Number(el.dataset.tid);
+      const pos = D.positions[tid] || { x: 0, y: 0 };
+      pending = { el, tid, sx: e.clientX - pos.x, sy: e.clientY - pos.y, cx: e.clientX, cy: e.clientY };
+      didDrag = false;
+      e.preventDefault();   // prevent text selection
+    });
+  });
+
+  // Click on header → toggle expand (only if not dragged)
+  wrap.querySelectorAll('.erd-header').forEach(hdr => {
+    hdr.addEventListener('click', () => {
+      if (!didDrag) toggleEntityExpand(Number(hdr.dataset.tid));
+    });
+  });
+
+  wrap.addEventListener('mousemove', e => {
+    if (!pending && !active) return;
+    if (pending) {
+      const moved = Math.abs(e.clientX - pending.cx) > 4 || Math.abs(e.clientY - pending.cy) > 4;
+      if (moved) { active = pending; pending = null; active.el.classList.add('is-dragging'); didDrag = true; }
+    }
+    if (active) {
+      const x = e.clientX - active.sx;
+      const y = e.clientY - active.sy;
+      D.positions[active.tid] = { x, y };
+      active.el.style.left = x + 'px';
+      active.el.style.top  = y + 'px';
+      drawLines(selId, rels);
+    }
+  });
+
+  const endDrag = () => {
+    if (active) { active.el.classList.remove('is-dragging'); active = null; }
+    pending = null;
+  };
+  wrap.addEventListener('mouseup',    endDrag);
+  wrap.addEventListener('mouseleave', endDrag);
 }
 
 // ─────────────────────────────────────────────

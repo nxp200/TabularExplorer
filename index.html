@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Azure AS Tabular Explorer</title>
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<style>
+:root {
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #1c2128;
+  --bg-panel: #21262d;
+  --border: #30363d;
+  --accent: #4f8ef7;
+  --accent-hover: #6ba3ff;
+  --accent-dim: rgba(79,142,247,0.12);
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted: #484f58;
+  --success: #3fb950;
+  --success-dim: rgba(63,185,80,0.12);
+  --warning: #d29922;
+  --error: #f85149;
+  --error-dim: rgba(248,81,73,0.12);
+  --purple: #a78bfa;
+  --cyan: #38bdf8;
+  --orange: #fb923c;
+  --green: #34d399;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg-primary);color:var(--text-primary);display:flex;flex-direction:column;}
+
+/* ── HEADER ── */
+header{height:52px;background:var(--bg-secondary);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:12px;flex-shrink:0;z-index:10;}
+.logo{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:600;letter-spacing:-0.01em;}
+.logo-icon{width:28px;height:28px;background:linear-gradient(135deg,#4f8ef7,#a78bfa);border-radius:7px;display:flex;align-items:center;justify-content:center;}
+.logo-icon svg{width:16px;height:16px;color:#fff;}
+.header-sep{width:1px;height:20px;background:var(--border);}
+.status-pill{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;background:var(--bg-tertiary);color:var(--text-secondary);border:1px solid var(--border);display:flex;align-items:center;gap:5px;}
+.status-pill .dot{width:6px;height:6px;border-radius:50%;background:var(--text-muted);}
+.status-pill.connected{background:var(--success-dim);color:var(--success);border-color:rgba(63,185,80,0.25);}
+.status-pill.connected .dot{background:var(--success);}
+.header-actions{margin-left:auto;display:flex;gap:8px;align-items:center;}
+.btn-icon{width:32px;height:32px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.15s;}
+.btn-icon:hover{background:var(--bg-tertiary);color:var(--text-primary);}
+
+/* ── LAYOUT ── */
+.app-body{display:flex;flex:1;overflow:hidden;}
+
+/* ── LEFT SIDEBAR ── */
+.sidebar{width:268px;min-width:200px;background:var(--bg-secondary);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;}
+
+/* ── CONNECTION ── */
+.conn-section{padding:14px;border-bottom:1px solid var(--border);}
+.section-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px;}
+.field{margin-bottom:8px;}
+.field label{display:block;font-size:11px;color:var(--text-secondary);margin-bottom:3px;}
+.field input{width:100%;background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-primary);border-radius:6px;padding:6px 9px;font-size:12px;outline:none;transition:border-color 0.15s;}
+.field input:focus{border-color:var(--accent);}
+.field input::placeholder{color:var(--text-muted);}
+.btn{width:100%;padding:7px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;border:none;transition:all 0.2s;text-align:center;}
+.btn-primary{background:var(--accent);color:#fff;margin-top:2px;}
+.btn-primary:hover{background:var(--accent-hover);}
+.btn-secondary{background:transparent;color:var(--text-secondary);border:1px solid var(--border);margin-top:6px;}
+.btn-secondary:hover{background:var(--bg-tertiary);color:var(--text-primary);}
+.error-box{margin-top:8px;background:var(--error-dim);border:1px solid rgba(248,81,73,0.25);border-radius:6px;padding:8px 10px;font-size:11px;color:#fca5a5;line-height:1.4;}
+
+/* ── TABLE LIST ── */
+.tables-section{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+.tables-header{padding:12px 14px 6px;display:flex;align-items:center;justify-content:space-between;}
+.count-badge{font-size:10px;background:var(--bg-tertiary);color:var(--text-muted);padding:1px 6px;border-radius:8px;border:1px solid var(--border);}
+.search-wrap{padding:0 10px 6px;position:relative;}
+.search-wrap svg{position:absolute;left:19px;top:50%;transform:translateY(-50%);color:var(--text-muted);pointer-events:none;}
+.search-wrap input{padding-left:30px;background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-primary);border-radius:6px;width:100%;padding:6px 9px 6px 30px;font-size:12px;outline:none;}
+.search-wrap input:focus{border-color:var(--accent);}
+.search-wrap input::placeholder{color:var(--text-muted);}
+.table-list{flex:1;overflow-y:auto;padding:2px 6px 8px;}
+.tbl-item{display:flex;align-items:center;gap:7px;padding:7px 8px;border-radius:6px;cursor:pointer;font-size:12.5px;color:var(--text-secondary);transition:all 0.12s;margin-bottom:1px;user-select:none;}
+.tbl-item:hover{background:var(--bg-tertiary);color:var(--text-primary);}
+.tbl-item.active{background:var(--accent-dim);color:var(--accent);}
+.tbl-icon{width:14px;height:14px;flex-shrink:0;opacity:0.7;}
+.tbl-item.active .tbl-icon{opacity:1;}
+.hidden-tag{font-size:9px;padding:1px 5px;border-radius:4px;background:var(--bg-panel);color:var(--text-muted);border:1px solid var(--border);margin-left:auto;flex-shrink:0;}
+
+/* ── MAIN ── */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+
+/* ── DEMO BANNER ── */
+.demo-banner{padding:6px 18px;background:rgba(210,153,34,0.1);border-bottom:1px solid rgba(210,153,34,0.25);font-size:11.5px;color:#e3b341;display:flex;align-items:center;gap:7px;flex-shrink:0;}
+
+/* ── MODEL PROPS PANEL ── */
+.model-props{background:var(--bg-secondary);border-bottom:1px solid var(--border);flex-shrink:0;}
+.panel-header{padding:9px 18px;display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12.5px;font-weight:500;color:var(--text-secondary);user-select:none;transition:color 0.15s;}
+.panel-header:hover{color:var(--text-primary);}
+.panel-header svg{color:var(--accent);}
+.chevron{margin-left:auto;transition:transform 0.2s;color:var(--text-muted);}
+.chevron.open{transform:rotate(180deg);}
+.props-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;padding:0 18px 14px;}
+.prop-card{background:var(--bg-tertiary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
+.prop-lbl{font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:4px;}
+.prop-val{font-size:12px;color:var(--text-primary);word-break:break-all;font-family:'SF Mono','Fira Code',Consolas,monospace;}
+.prop-val.big{font-size:18px;font-family:inherit;font-weight:600;color:var(--accent);}
+
+/* ── DETAIL ── */
+.detail{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+
+/* Welcome */
+.welcome{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:var(--text-muted);}
+.welcome-icon{width:56px;height:56px;opacity:0.25;}
+.welcome h2{font-size:17px;color:var(--text-secondary);font-weight:500;}
+.welcome p{font-size:12.5px;text-align:center;max-width:280px;line-height:1.6;}
+
+/* Table detail */
+.tbl-detail{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+.detail-header{padding:14px 20px 0;border-bottom:1px solid var(--border);flex-shrink:0;}
+.detail-title{font-size:17px;font-weight:600;margin-bottom:11px;display:flex;align-items:center;gap:8px;}
+.detail-title .desc{font-size:12px;font-weight:400;color:var(--text-muted);}
+
+/* Tabs */
+.tabs{display:flex;gap:0;}
+.tab{padding:7px 14px;font-size:12.5px;cursor:pointer;color:var(--text-muted);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all 0.15s;display:flex;align-items:center;gap:5px;white-space:nowrap;}
+.tab:hover{color:var(--text-secondary);}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tab-badge{font-size:10px;background:var(--bg-panel);padding:1px 5px;border-radius:8px;min-width:16px;text-align:center;}
+.tab.active .tab-badge{background:var(--accent-dim);color:var(--accent);}
+
+/* Tab content */
+.tab-body{flex:1;overflow-y:auto;padding:16px 20px;}
+
+/* Data table */
+.dtable{width:100%;border-collapse:collapse;font-size:12.5px;}
+.dtable th{text-align:left;padding:7px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);background:var(--bg-secondary);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:1;}
+.dtable td{padding:7px 12px;border-bottom:1px solid rgba(48,54,61,0.5);color:var(--text-secondary);vertical-align:middle;}
+.dtable tr:last-child td{border-bottom:none;}
+.dtable tr:hover td{background:var(--bg-tertiary);color:var(--text-primary);}
+.dtable td:first-child{color:var(--text-primary);font-weight:500;}
+
+/* Badges */
+.badge{display:inline-flex;align-items:center;padding:2px 6px;border-radius:4px;font-size:10.5px;font-weight:500;}
+.b-str{background:rgba(56,189,248,0.12);color:#38bdf8;}
+.b-int{background:rgba(167,139,250,0.12);color:#a78bfa;}
+.b-dec{background:rgba(167,139,250,0.12);color:#a78bfa;}
+.b-bool{background:rgba(251,146,60,0.12);color:#fb923c;}
+.b-dt{background:rgba(52,211,153,0.12);color:#34d399;}
+.b-calc{background:rgba(79,142,247,0.12);color:#4f8ef7;}
+.b-other{background:var(--bg-panel);color:var(--text-muted);}
+.b-green{background:var(--success-dim);color:var(--success);border:1px solid rgba(63,185,80,0.2);}
+.b-warn{background:rgba(210,153,34,0.12);color:#e3b341;border:1px solid rgba(210,153,34,0.2);}
+
+/* Expression code */
+.expr{font-family:'SF Mono','Fira Code',Consolas,monospace;font-size:11px;color:var(--purple);white-space:pre-wrap;word-break:break-word;}
+
+/* Relationship cards */
+.rel-card,.hier-card,.part-card{background:var(--bg-tertiary);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px;}
+.rel-tables{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;flex-wrap:wrap;}
+.rel-tname{font-weight:600;color:var(--accent);}
+.rel-col{color:var(--text-secondary);font-size:12px;}
+.rel-arrow{color:var(--text-muted);font-size:12px;}
+.rel-meta{display:flex;gap:6px;flex-wrap:wrap;}
+.meta-tag{font-size:10.5px;padding:2px 7px;border-radius:4px;background:var(--bg-panel);color:var(--text-secondary);border:1px solid var(--border);}
+
+/* Hierarchy */
+.hier-title{font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:7px;font-size:13px;}
+.hier-levels{display:flex;flex-direction:column;gap:3px;padding-left:6px;}
+.hier-level{display:flex;align-items:center;gap:8px;font-size:12px;}
+.hier-num{color:var(--text-muted);width:16px;text-align:right;font-size:10px;}
+.hier-level-name{color:var(--text-primary);}
+.hier-col{color:var(--text-muted);}
+
+/* Partition */
+.part-title{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.part-name{font-weight:600;font-size:13px;}
+pre.query{background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-size:10.5px;color:var(--purple);overflow-x:auto;white-space:pre-wrap;line-height:1.6;margin-top:6px;}
+
+/* Loading / empty */
+.loading-box{display:flex;align-items:center;justify-content:center;padding:36px;gap:10px;color:var(--text-muted);font-size:13px;}
+.spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.75s linear infinite;flex-shrink:0;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.empty{padding:32px;text-align:center;color:var(--text-muted);font-size:13px;}
+
+/* ── BIM MODAL ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(3px);z-index:100;display:flex;align-items:center;justify-content:center;}
+.modal{background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;width:660px;max-width:calc(100vw - 32px);max-height:85vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.5);}
+.modal-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.modal-title{font-size:14px;font-weight:600;flex:1;}
+.modal-close{width:28px;height:28px;border-radius:5px;border:none;background:transparent;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;line-height:1;transition:all 0.15s;}
+.modal-close:hover{background:var(--bg-tertiary);color:var(--text-primary);}
+.modal-body{padding:20px;overflow-y:auto;flex:1;}
+.modal-footer{padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;flex-shrink:0;}
+.modal-footer .btn{width:auto;padding:7px 16px;}
+.drop-zone{border:2px dashed var(--border);border-radius:8px;padding:28px;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:16px;}
+.drop-zone:hover,.drop-zone.drag-over{border-color:var(--accent);background:var(--accent-dim);}
+.drop-zone-icon{width:36px;height:36px;color:var(--text-muted);margin:0 auto 10px;}
+.drop-zone p{font-size:13px;color:var(--text-secondary);margin-bottom:4px;}
+.drop-zone span{font-size:11px;color:var(--text-muted);}
+.drop-zone input[type=file]{display:none;}
+.or-divider{display:flex;align-items:center;gap:10px;margin-bottom:16px;color:var(--text-muted);font-size:11px;}
+.or-divider::before,.or-divider::after{content:'';flex:1;height:1px;background:var(--border);}
+.paste-area{width:100%;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-family:'SF Mono','Fira Code',Consolas,monospace;font-size:11.5px;padding:10px 12px;resize:vertical;min-height:160px;outline:none;line-height:1.6;transition:border-color 0.15s;}
+.paste-area:focus{border-color:var(--accent);}
+.paste-area::placeholder{color:var(--text-muted);font-family:inherit;}
+.parse-err{background:var(--error-dim);border:1px solid rgba(248,81,73,0.25);border-radius:6px;padding:8px 10px;font-size:11px;color:#fca5a5;margin-top:10px;display:none;}
+.btn-bim{background:transparent;color:var(--text-secondary);border:1px solid var(--border);margin-top:6px;}
+.btn-bim:hover{background:var(--bg-tertiary);color:var(--text-primary);}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+::-webkit-scrollbar-thumb:hover{background:var(--text-muted);}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="1" y="1" width="6" height="6" rx="1.5"/>
+        <rect x="9" y="1" width="6" height="6" rx="1.5" opacity="0.6"/>
+        <rect x="1" y="9" width="6" height="6" rx="1.5" opacity="0.6"/>
+        <rect x="9" y="9" width="6" height="6" rx="1.5" opacity="0.3"/>
+      </svg>
+    </div>
+    Azure AS Tabular Explorer
+  </div>
+  <div class="header-sep"></div>
+  <div id="statusPill" class="status-pill"><span class="dot"></span>Not connected</div>
+  <div class="header-actions">
+    <button class="btn-icon" title="Refresh metadata" onclick="refreshMetadata()" id="refreshBtn" style="display:none">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41zm-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9z"/>
+        <path fill-rule="evenodd" d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5.002 5.002 0 0 0 8 3zM3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9H3.1z"/>
+      </svg>
+    </button>
+  </div>
+</header>
+
+<!-- APP BODY -->
+<div class="app-body">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+
+    <!-- Connection form -->
+    <div class="conn-section">
+      <div class="section-label">Connection</div>
+      <div class="field">
+        <label>Server URL</label>
+        <input id="serverUrl" type="text" placeholder="asazure://region.asazure.windows.net/server"/>
+      </div>
+      <div class="field">
+        <label>Database / Model</label>
+        <input id="dbName" type="text" placeholder="ModelName"/>
+      </div>
+      <div class="field">
+        <label>Tenant ID</label>
+        <input id="tenantId" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/>
+      </div>
+      <div class="field">
+        <label>Client ID <span style="color:var(--text-muted)">(optional)</span></label>
+        <input id="clientId" type="text" placeholder="Azure AD App Client ID"/>
+      </div>
+      <button class="btn btn-primary" onclick="connectModel()">Connect</button>
+      <button class="btn btn-secondary" onclick="loadDemo()">&#9654; Load Demo Model</button>
+      <button class="btn btn-bim" onclick="openBimModal()">&#8599; Load from .bim / JSON</button>
+      <div id="errBox" class="error-box" style="display:none"></div>
+    </div>
+
+    <!-- Table list -->
+    <div class="tables-section">
+      <div class="tables-header">
+        <span class="section-label" style="margin-bottom:0">Tables</span>
+        <span class="count-badge" id="tblCount">0</span>
+      </div>
+      <div class="search-wrap">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.118-.099zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
+        </svg>
+        <input id="tblSearch" type="text" placeholder="Filter tables…" oninput="filterTables()"/>
+      </div>
+      <div class="table-list" id="tableList">
+        <!-- populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- Demo banner -->
+    <div class="demo-banner" id="demoBanner" style="display:none">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
+      Demo mode — sample AdventureWorks data. Connect to a live server to explore real models.
+    </div>
+
+    <!-- Model properties panel -->
+    <div class="model-props" id="modelProps" style="display:none">
+      <div class="panel-header" onclick="toggleProps()">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="color:var(--accent)">
+          <path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311c.446.82.023 1.841-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 .872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.858z"/>
+        </svg>
+        Model Properties
+        <svg class="chevron open" id="propsChevron" width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z"/>
+        </svg>
+      </div>
+      <div id="propsGrid" class="props-grid"></div>
+    </div>
+
+    <!-- Detail area -->
+    <div class="detail" id="detail">
+      <!-- Welcome -->
+      <div class="welcome" id="welcomeScreen">
+        <svg class="welcome-icon" viewBox="0 0 64 64" fill="currentColor">
+          <rect x="4" y="4" width="24" height="24" rx="4"/>
+          <rect x="36" y="4" width="24" height="24" rx="4" opacity="0.55"/>
+          <rect x="4" y="36" width="24" height="24" rx="4" opacity="0.55"/>
+          <rect x="36" y="36" width="24" height="24" rx="4" opacity="0.25"/>
+        </svg>
+        <h2>Azure AS Tabular Explorer</h2>
+        <p>Enter your connection details and click <strong>Connect</strong>, or try the demo model to get started.</p>
+      </div>
+
+      <!-- Table detail (hidden until table selected) -->
+      <div class="tbl-detail" id="tblDetail" style="display:none">
+        <div class="detail-header">
+          <div class="detail-title">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="color:var(--accent);flex-shrink:0">
+              <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2zm15 2h-4v3h4V4zm0 4h-4v3h4V8zm0 4h-4v3h3a1 1 0 0 0 1-1v-2zm-5 3v-3H6v3h4zm-5 0v-3H1v2a1 1 0 0 0 1 1h3zm-4-4h4V8H1v3zm0-4h4V4H1v3zm5-3v3h4V4H6zm4 4H6v3h4V8z"/>
+            </svg>
+            <span id="detailTableName"></span>
+            <span class="desc" id="detailTableDesc"></span>
+          </div>
+          <div class="tabs" id="tabsBar">
+            <div class="tab active" data-tab="columns" onclick="switchTab('columns')">Columns <span class="tab-badge" id="badgeCols">0</span></div>
+            <div class="tab" data-tab="measures" onclick="switchTab('measures')">Measures <span class="tab-badge" id="badgeMeas">0</span></div>
+            <div class="tab" data-tab="relationships" onclick="switchTab('relationships')">Relationships <span class="tab-badge" id="badgeRels">0</span></div>
+            <div class="tab" data-tab="hierarchies" onclick="switchTab('hierarchies')">Hierarchies <span class="tab-badge" id="badgeHiers">0</span></div>
+            <div class="tab" data-tab="partitions" onclick="switchTab('partitions')">Partitions <span class="tab-badge" id="badgeParts">0</span></div>
+          </div>
+        </div>
+        <div class="tab-body" id="tabBody"></div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /app-body -->
+
+<!-- BIM MODAL -->
+<div class="modal-overlay" id="bimOverlay" style="display:none" onclick="closeBimOnBackdrop(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" style="color:var(--accent)">
+        <path d="M9.293 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.707A1 1 0 0 0 13.707 4L10 .293A1 1 0 0 0 9.293 0zM9.5 3.5v-2l3 3h-2a1 1 0 0 1-1-1zM4.5 9a.5.5 0 0 1 0-1h7a.5.5 0 0 1 0 1h-7zM4 10.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm.5 2.5a.5.5 0 0 1 0-1h4a.5.5 0 0 1 0 1h-4z"/>
+      </svg>
+      <span class="modal-title">Load Tabular Model from .bim / JSON</span>
+      <button class="modal-close" onclick="closeBimModal()">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <div class="drop-zone" id="dropZone" onclick="id('bimFileInput').click()"
+           ondragover="handleDragOver(event)" ondragleave="handleDragLeave()" ondrop="handleDrop(event)">
+        <input type="file" id="bimFileInput" accept=".bim,.json" onchange="handleFileSelect(event)"/>
+        <svg class="drop-zone-icon" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+          <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
+        </svg>
+        <p id="dropZoneLabel">Drop your <strong>.bim</strong> or <strong>.json</strong> file here</p>
+        <span>or click to browse &mdash; accepts Visual Studio .bim and TMSL JSON</span>
+      </div>
+      <div class="or-divider">or paste JSON below</div>
+      <textarea class="paste-area" id="bimPasteArea" placeholder="Paste your .bim / TMSL JSON here&#10;&#10;Supported formats:&#10;&#x2022; Visual Studio .bim file  { &quot;model&quot;: { &quot;tables&quot;: [...] } }&#10;&#x2022; TMSL create script       { &quot;create&quot;: { &quot;database&quot;: { ... } } }&#10;&#x2022; Raw model object         { &quot;tables&quot;: [...], &quot;relationships&quot;: [...] }"></textarea>
+      <div class="parse-err" id="parseErr"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" style="width:auto;padding:7px 16px" onclick="closeBimModal()">Cancel</button>
+      <button class="btn btn-primary" style="width:auto;padding:7px 20px" onclick="parseBimAndLoad()">Load Model</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+const S = {
+  connected: false, isDemo: false,
+  serverUrl: '', database: '', tenantId: '', clientId: '',
+  token: null, msalApp: null,
+  tables: [], columns: [], measures: [],
+  relationships: [], hierarchies: [], hierLevels: [], partitions: [],
+  selectedTableId: null, currentTab: 'columns',
+  propsOpen: true,
+  modelProps: {}
+};
+
+// ─────────────────────────────────────────────
+// MSAL AUTH
+// ─────────────────────────────────────────────
+async function initMsal(tenantId, clientId) {
+  const cfg = {
+    auth: {
+      clientId: clientId || '7f67af8a-fedc-4b08-8b4e-aa5178fba589',
+      authority: `https://login.microsoftonline.com/${tenantId}`,
+      redirectUri: window.location.origin + window.location.pathname
+    },
+    cache: { cacheLocation: 'sessionStorage' }
+  };
+  S.msalApp = new msal.PublicClientApplication(cfg);
+  await S.msalApp.initialize();
+}
+
+async function getToken(serverUrl) {
+  const base = serverUrl.replace('asazure://', 'https://').split('/').slice(0,3).join('/');
+  const scopes = [`${base}/.default`];
+  const accounts = S.msalApp.getAllAccounts();
+  try {
+    if (accounts.length) {
+      const r = await S.msalApp.acquireTokenSilent({ scopes, account: accounts[0] });
+      return r.accessToken;
+    }
+  } catch(e) {}
+  const r = await S.msalApp.acquireTokenPopup({ scopes });
+  return r.accessToken;
+}
+
+// ─────────────────────────────────────────────
+// API — execute DMV via XMLA JSON
+// ─────────────────────────────────────────────
+async function runQuery(stmt) {
+  const host = S.serverUrl.replace('asazure://', '');
+  const url = `https://${host}/models/${encodeURIComponent(S.database)}/execute`;
+  const body = {
+    execute: {
+      command: { statement: stmt },
+      properties: { PropertyList: { Catalog: S.database } }
+    }
+  };
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${S.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  const tbl = data?.results?.[0]?.tables?.[0];
+  return tbl?.rows || [];
+}
+
+async function loadMetadata() {
+  S.tables        = await runQuery(`SELECT [ID],[Name],[Description],[IsHidden],[TableType] FROM $SYSTEM.TMSCHEMA_TABLES ORDER BY [Name]`);
+  S.columns       = await runQuery(`SELECT [TableID],[Name],[Description],[DataType],[IsHidden],[IsKey],[ColumnType],[Expression] FROM $SYSTEM.TMSCHEMA_COLUMNS`);
+  S.measures      = await runQuery(`SELECT [TableID],[Name],[Description],[DataType],[IsHidden],[Expression],[DisplayFolder],[FormatString] FROM $SYSTEM.TMSCHEMA_MEASURES`);
+  S.relationships = await runQuery(`SELECT [ID],[FromTableID],[FromColumnID],[ToTableID],[ToColumnID],[Multiplicity],[CrossFilteringBehavior],[IsActive] FROM $SYSTEM.TMSCHEMA_RELATIONSHIPS`);
+  S.hierarchies   = await runQuery(`SELECT [TableID],[ID],[Name],[Description],[IsHidden],[DisplayFolder] FROM $SYSTEM.TMSCHEMA_HIERARCHIES`);
+  S.hierLevels    = await runQuery(`SELECT [HierarchyID],[Name],[Ordinal],[ColumnID] FROM $SYSTEM.TMSCHEMA_LEVELS ORDER BY [HierarchyID],[Ordinal]`);
+  S.partitions    = await runQuery(`SELECT [TableID],[Name],[Mode],[Type],[QueryDefinition] FROM $SYSTEM.TMSCHEMA_PARTITIONS`);
+}
+
+// ─────────────────────────────────────────────
+// CONNECT
+// ─────────────────────────────────────────────
+async function connectModel() {
+  const sv  = id('serverUrl').value.trim();
+  const db  = id('dbName').value.trim();
+  const tid = id('tenantId').value.trim();
+  const cid = id('clientId').value.trim();
+  if (!sv || !db || !tid) { showErr('Server URL, Database and Tenant ID are required.'); return; }
+  clearErr();
+  setLoading('Authenticating…');
+  try {
+    S.serverUrl = sv; S.database = db; S.tenantId = tid; S.clientId = cid; S.isDemo = false;
+    await initMsal(tid, cid);
+    S.token = await getToken(sv);
+    setLoading('Loading metadata…');
+    await loadMetadata();
+    buildModelProps();
+    onConnected();
+  } catch(e) {
+    showErr(e.message);
+    id('tableList').innerHTML = '';
+  }
+}
+
+function buildModelProps() {
+  const host = S.serverUrl.replace('asazure://','');
+  S.modelProps = {
+    'Server':             S.serverUrl,
+    'Database':           S.database,
+    'XMLA Endpoint':      `https://${host}/models/${S.database}/xmla`,
+    'Connection String':  `Provider=MSOLAP;Data Source=${S.serverUrl};Initial Catalog=${S.database};`,
+    'Tables':             S.tables.length,
+    'Columns':            S.columns.length,
+    'Measures':           S.measures.length,
+    'Relationships':      S.relationships.length,
+    'Hierarchies':        S.hierarchies.length,
+  };
+}
+
+function onConnected() {
+  S.connected = true;
+  const pill = id('statusPill');
+  pill.className = 'status-pill connected';
+  pill.innerHTML = `<span class="dot"></span>Connected — ${S.database}`;
+  id('refreshBtn').style.display = 'flex';
+  id('demoBanner').style.display = S.isDemo ? 'flex' : 'none';
+  id('modelProps').style.display = 'block';
+  renderProps();
+  renderTableList();
+  id('welcomeScreen').style.display = 'flex';
+  id('tblDetail').style.display = 'none';
+  S.selectedTableId = null;
+}
+
+async function refreshMetadata() {
+  if (S.isDemo) { loadDemo(); return; }
+  setLoading('Refreshing…');
+  try {
+    await loadMetadata();
+    buildModelProps();
+    renderProps();
+    renderTableList();
+    if (S.selectedTableId) selectTable(S.selectedTableId);
+  } catch(e) { showErr(e.message); }
+}
+
+// ─────────────────────────────────────────────
+// DEMO DATA (AdventureWorks-style)
+// ─────────────────────────────────────────────
+function loadDemo() {
+  S.isDemo = true;
+  S.serverUrl = 'asazure://eastus.asazure.windows.net/adventureworks';
+  S.database  = 'AdventureWorks';
+
+  S.tables = [
+    {ID:1,Name:'Customer',     Description:'Customer dimension',   IsHidden:false,TableType:'Regular'},
+    {ID:2,Name:'Product',      Description:'Product dimension',    IsHidden:false,TableType:'Regular'},
+    {ID:3,Name:'Date',         Description:'Date dimension',       IsHidden:false,TableType:'Regular'},
+    {ID:4,Name:'Sales',        Description:'Sales fact table',     IsHidden:false,TableType:'Regular'},
+    {ID:5,Name:'Territory',    Description:'Sales territories',    IsHidden:false,TableType:'Regular'},
+    {ID:6,Name:'Employee',     Description:'Employee dimension',   IsHidden:false,TableType:'Regular'},
+    {ID:7,Name:'_Measures',    Description:'Measure group',        IsHidden:false,TableType:'Regular'},
+    {ID:8,Name:'Budget',       Description:'Budget facts',         IsHidden:false,TableType:'Regular'},
+    {ID:9,Name:'_Hidden Table',Description:'Internal system table',IsHidden:true, TableType:'Regular'},
+  ];
+
+  S.columns = [
+    // Customer
+    {TableID:1,Name:'CustomerKey',   DataType:'Integer', IsHidden:false,IsKey:true, ColumnType:'Data',       Expression:null},
+    {TableID:1,Name:'FirstName',     DataType:'String',  IsHidden:false,IsKey:false,ColumnType:'Data',       Expression:null},
+    {TableID:1,Name:'LastName',      DataType:'String',  IsHidden:false,IsKey:false,ColumnType:'Data',       Expression:null},
+    {TableID:1,Name:'Full Name',     DataType:'String',  IsHidden:false,IsKey:false,ColumnType:'Calculated', Expression:'[FirstName] & " " & [LastName]'},
+    {TableID:1,Name:'EmailAddress',  DataType:'String',  IsHidden:false,IsKey:false,ColumnType:'Data',       Expression:null},
+    {TableID:1,Name:'CountryRegion', DataType:'String',  IsHidden:false,IsKey:false,ColumnType:'Data',       Expression:null},
+    {TableID:1,Name:'YearlyIncome',  DataType:'Decimal', IsHidden:false,IsKey:false,ColumnType:'Data',       Expression:null},
+    {TableID:1,Name:'BirthDate',     DataType:'DateTime',IsHidden:false,IsKey:false,ColumnType:'Data',       Expression:null},
+    {TableID:1,Name:'Gender',        DataType:'String',  IsHidden:false,IsKey:false,ColumnType:'Data',       Expression:null},
+    // Product
+    {TableID:2,Name:'ProductKey',        DataType:'Integer', IsHidden:false,IsKey:true, ColumnType:'Data',Expression:null},
+    {TableID:2,Name:'ProductName',       DataType:'String',  IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:2,Name:'ProductCategory',   DataType:'String',  IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:2,Name:'ProductSubcategory',DataType:'String',  IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:2,Name:'StandardCost',      DataType:'Decimal', IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:2,Name:'ListPrice',         DataType:'Decimal', IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:2,Name:'Color',             DataType:'String',  IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:2,Name:'Size',              DataType:'String',  IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    // Date
+    {TableID:3,Name:'DateKey',   DataType:'Integer', IsHidden:false,IsKey:true, ColumnType:'Data',Expression:null},
+    {TableID:3,Name:'Date',      DataType:'DateTime',IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:3,Name:'Year',      DataType:'Integer', IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:3,Name:'MonthNo',   DataType:'Integer', IsHidden:true, IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:3,Name:'MonthName', DataType:'String',  IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:3,Name:'Quarter',   DataType:'String',  IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:3,Name:'WeekDay',   DataType:'String',  IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:3,Name:'IsWeekend', DataType:'Boolean', IsHidden:false,IsKey:false,ColumnType:'Calculated',Expression:"[WeekDay] IN {\"Saturday\",\"Sunday\"}"},
+    // Sales
+    {TableID:4,Name:'SalesOrderNumber',DataType:'String', IsHidden:false,IsKey:true, ColumnType:'Data',Expression:null},
+    {TableID:4,Name:'OrderDateKey',    DataType:'Integer',IsHidden:true, IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:4,Name:'CustomerKey',     DataType:'Integer',IsHidden:true, IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:4,Name:'ProductKey',      DataType:'Integer',IsHidden:true, IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:4,Name:'TerritoryKey',    DataType:'Integer',IsHidden:true, IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:4,Name:'OrderQuantity',   DataType:'Integer',IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:4,Name:'UnitPrice',       DataType:'Decimal',IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:4,Name:'SalesAmount',     DataType:'Decimal',IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:4,Name:'TaxAmount',       DataType:'Decimal',IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:4,Name:'FreightAmount',   DataType:'Decimal',IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    // Territory
+    {TableID:5,Name:'TerritoryKey', DataType:'Integer',IsHidden:false,IsKey:true, ColumnType:'Data',Expression:null},
+    {TableID:5,Name:'TerritoryName',DataType:'String', IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:5,Name:'Country',      DataType:'String', IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:5,Name:'Group',        DataType:'String', IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    // Employee
+    {TableID:6,Name:'EmployeeKey',DataType:'Integer',IsHidden:false,IsKey:true, ColumnType:'Data',Expression:null},
+    {TableID:6,Name:'FirstName',  DataType:'String', IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:6,Name:'LastName',   DataType:'String', IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:6,Name:'Title',      DataType:'String', IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:6,Name:'Department', DataType:'String', IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+    // Budget
+    {TableID:8,Name:'BudgetKey',   DataType:'Integer',IsHidden:false,IsKey:true, ColumnType:'Data',Expression:null},
+    {TableID:8,Name:'DateKey',     DataType:'Integer',IsHidden:true, IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:8,Name:'TerritoryKey',DataType:'Integer',IsHidden:true, IsKey:false,ColumnType:'Data',Expression:null},
+    {TableID:8,Name:'BudgetAmount',DataType:'Decimal',IsHidden:false,IsKey:false,ColumnType:'Data',Expression:null},
+  ];
+
+  S.measures = [
+    {TableID:7,Name:'Total Sales',       DataType:'Decimal', IsHidden:false,DisplayFolder:'',                 FormatString:'$#,##0.00',  Expression:'SUM(Sales[SalesAmount])'},
+    {TableID:7,Name:'Total Quantity',    DataType:'Integer', IsHidden:false,DisplayFolder:'',                 FormatString:'#,##0',      Expression:'SUM(Sales[OrderQuantity])'},
+    {TableID:7,Name:'Avg Order Value',   DataType:'Decimal', IsHidden:false,DisplayFolder:'KPIs',             FormatString:'$#,##0.00',  Expression:'AVERAGEX(Sales, Sales[SalesAmount])'},
+    {TableID:7,Name:'Customer Count',    DataType:'Integer', IsHidden:false,DisplayFolder:'Customers',        FormatString:'#,##0',      Expression:'DISTINCTCOUNT(Sales[CustomerKey])'},
+    {TableID:7,Name:'Sales YTD',         DataType:'Decimal', IsHidden:false,DisplayFolder:'Time Intelligence',FormatString:'$#,##0.00',  Expression:"TOTALYTD([Total Sales],'Date'[Date])"},
+    {TableID:7,Name:'Sales PY',          DataType:'Decimal', IsHidden:false,DisplayFolder:'Time Intelligence',FormatString:'$#,##0.00',  Expression:"CALCULATE([Total Sales],SAMEPERIODLASTYEAR('Date'[Date]))"},
+    {TableID:7,Name:'Sales Growth %',    DataType:'Decimal', IsHidden:false,DisplayFolder:'Time Intelligence',FormatString:'0.00%',      Expression:'DIVIDE([Total Sales]-[Sales PY],[Sales PY])'},
+    {TableID:7,Name:'Sales vs Budget',   DataType:'Decimal', IsHidden:false,DisplayFolder:'KPIs',             FormatString:'$#,##0.00',  Expression:'[Total Sales]-[Total Budget]'},
+    {TableID:7,Name:'Total Budget',      DataType:'Decimal', IsHidden:false,DisplayFolder:'',                 FormatString:'$#,##0.00',  Expression:'SUM(Budget[BudgetAmount])'},
+    {TableID:4,Name:'Gross Margin',      DataType:'Decimal', IsHidden:false,DisplayFolder:'',                 FormatString:'$#,##0.00',  Expression:'SUMX(Sales,Sales[SalesAmount]-Sales[TaxAmount])'},
+    {TableID:4,Name:'Gross Margin %',    DataType:'Decimal', IsHidden:false,DisplayFolder:'',                 FormatString:'0.00%',      Expression:'DIVIDE([Gross Margin],[Total Sales])'},
+  ];
+
+  S.relationships = [
+    {ID:1,FromTableID:4,FromColumnID:'CustomerKey', ToTableID:1,ToColumnID:'CustomerKey', Multiplicity:'ManyToOne',CrossFilteringBehavior:'OneDirection', IsActive:true},
+    {ID:2,FromTableID:4,FromColumnID:'ProductKey',  ToTableID:2,ToColumnID:'ProductKey',  Multiplicity:'ManyToOne',CrossFilteringBehavior:'OneDirection', IsActive:true},
+    {ID:3,FromTableID:4,FromColumnID:'OrderDateKey',ToTableID:3,ToColumnID:'DateKey',     Multiplicity:'ManyToOne',CrossFilteringBehavior:'OneDirection', IsActive:true},
+    {ID:4,FromTableID:4,FromColumnID:'TerritoryKey',ToTableID:5,ToColumnID:'TerritoryKey',Multiplicity:'ManyToOne',CrossFilteringBehavior:'BothDirections',IsActive:true},
+    {ID:5,FromTableID:8,FromColumnID:'DateKey',     ToTableID:3,ToColumnID:'DateKey',     Multiplicity:'ManyToOne',CrossFilteringBehavior:'OneDirection', IsActive:true},
+    {ID:6,FromTableID:8,FromColumnID:'TerritoryKey',ToTableID:5,ToColumnID:'TerritoryKey',Multiplicity:'ManyToOne',CrossFilteringBehavior:'OneDirection', IsActive:false},
+  ];
+
+  S.hierarchies = [
+    {TableID:3,ID:1,Name:'Calendar',          Description:'Calendar hierarchy',    IsHidden:false,DisplayFolder:''},
+    {TableID:3,ID:2,Name:'Fiscal',            Description:'Fiscal year hierarchy', IsHidden:false,DisplayFolder:''},
+    {TableID:2,ID:3,Name:'Product Categories',Description:'',                      IsHidden:false,DisplayFolder:''},
+    {TableID:5,ID:4,Name:'Geography',         Description:'',                      IsHidden:false,DisplayFolder:''},
+  ];
+
+  S.hierLevels = [
+    {HierarchyID:1,Name:'Year',           Ordinal:0,ColumnID:'Year'},
+    {HierarchyID:1,Name:'Quarter',        Ordinal:1,ColumnID:'Quarter'},
+    {HierarchyID:1,Name:'Month',          Ordinal:2,ColumnID:'MonthName'},
+    {HierarchyID:2,Name:'Fiscal Year',    Ordinal:0,ColumnID:'Year'},
+    {HierarchyID:2,Name:'Fiscal Quarter', Ordinal:1,ColumnID:'Quarter'},
+    {HierarchyID:3,Name:'Category',       Ordinal:0,ColumnID:'ProductCategory'},
+    {HierarchyID:3,Name:'Subcategory',    Ordinal:1,ColumnID:'ProductSubcategory'},
+    {HierarchyID:3,Name:'Product',        Ordinal:2,ColumnID:'ProductName'},
+    {HierarchyID:4,Name:'Country',        Ordinal:0,ColumnID:'Country'},
+    {HierarchyID:4,Name:'Territory',      Ordinal:1,ColumnID:'TerritoryName'},
+  ];
+
+  S.partitions = [
+    {TableID:1,Name:'Customer-All',   Mode:'Import',       Type:'M',   QueryDefinition:'let\n    Source = Sql.Database("sqlserver.database.windows.net", "DW"),\n    tbl = Source{[Schema="dbo",Item="DimCustomer"]}[Data]\nin\n    tbl'},
+    {TableID:2,Name:'Product-All',    Mode:'Import',       Type:'M',   QueryDefinition:'let\n    Source = Sql.Database("sqlserver.database.windows.net", "DW"),\n    tbl = Source{[Schema="dbo",Item="DimProduct"]}[Data]\nin\n    tbl'},
+    {TableID:3,Name:'Date-All',       Mode:'Import',       Type:'M',   QueryDefinition:'let\n    Source = Sql.Database("sqlserver.database.windows.net", "DW"),\n    tbl = Source{[Schema="dbo",Item="DimDate"]}[Data]\nin\n    tbl'},
+    {TableID:4,Name:'Sales-2022',     Mode:'Import',       Type:'M',   QueryDefinition:'let\n    Source = Sql.Database("sqlserver.database.windows.net", "DW"),\n    tbl = Source{[Schema="dbo",Item="FactSales"]}[Data],\n    filtered = Table.SelectRows(tbl, each [Year] = 2022)\nin\n    filtered'},
+    {TableID:4,Name:'Sales-2023',     Mode:'Import',       Type:'M',   QueryDefinition:'let\n    Source = Sql.Database("sqlserver.database.windows.net", "DW"),\n    tbl = Source{[Schema="dbo",Item="FactSales"]}[Data],\n    filtered = Table.SelectRows(tbl, each [Year] = 2023)\nin\n    filtered'},
+    {TableID:4,Name:'Sales-2024',     Mode:'DirectQuery',  Type:'M',   QueryDefinition:'let\n    Source = Sql.Database("sqlserver.database.windows.net", "DW"),\n    tbl = Source{[Schema="dbo",Item="FactSales"]}[Data],\n    filtered = Table.SelectRows(tbl, each [Year] = 2024)\nin\n    filtered'},
+    {TableID:5,Name:'Territory-All',  Mode:'Import',       Type:'M',   QueryDefinition:'let\n    Source = Sql.Database("sqlserver.database.windows.net", "DW"),\n    tbl = Source{[Schema="dbo",Item="DimTerritory"]}[Data]\nin\n    tbl'},
+    {TableID:6,Name:'Employee-All',   Mode:'Import',       Type:'M',   QueryDefinition:'let\n    Source = Sql.Database("sqlserver.database.windows.net", "DW"),\n    tbl = Source{[Schema="dbo",Item="DimEmployee"]}[Data]\nin\n    tbl'},
+    {TableID:8,Name:'Budget-All',     Mode:'Import',       Type:'M',   QueryDefinition:'let\n    Source = Sql.Database("sqlserver.database.windows.net", "DW"),\n    tbl = Source{[Schema="dbo",Item="FactBudget"]}[Data]\nin\n    tbl'},
+  ];
+
+  S.modelProps = {
+    'Server':            S.serverUrl,
+    'Database':          S.database,
+    'XMLA Endpoint':     `https://eastus.asazure.windows.net/servers/adventureworks/models/${S.database}/xmla`,
+    'Connection String': `Provider=MSOLAP;Data Source=${S.serverUrl};Initial Catalog=${S.database};`,
+    'Compatibility Level': '1550',
+    'Tables':            S.tables.length,
+    'Columns':           S.columns.length,
+    'Measures':          S.measures.length,
+    'Relationships':     S.relationships.length,
+    'Hierarchies':       S.hierarchies.length,
+  };
+
+  onConnected();
+}
+
+// ─────────────────────────────────────────────
+// RENDER — TABLE LIST
+// ─────────────────────────────────────────────
+function renderTableList() {
+  const q = (id('tblSearch').value || '').toLowerCase();
+  const filtered = S.tables.filter(t => t.Name.toLowerCase().includes(q));
+  id('tblCount').textContent = S.tables.length;
+  const tableIcon = `<svg class="tbl-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2zm15 2h-4v3h4V4zm0 4h-4v3h4V8zm0 4h-4v3h3a1 1 0 0 0 1-1v-2zm-5 3v-3H6v3h4zm-5 0v-3H1v2a1 1 0 0 0 1 1h3zm-4-4h4V8H1v3zm0-4h4V4H1v3zm5-3v3h4V4H6zm4 4H6v3h4V8z"/></svg>`;
+  id('tableList').innerHTML = filtered.length
+    ? filtered.map(t => `
+        <div class="tbl-item ${S.selectedTableId===t.ID?'active':''}" onclick="selectTable(${t.ID})">
+          ${tableIcon}
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.Name)}</span>
+          ${t.IsHidden ? '<span class="hidden-tag">hidden</span>' : ''}
+        </div>`).join('')
+    : `<div class="empty">No tables found</div>`;
+}
+
+function filterTables() { renderTableList(); }
+
+// ─────────────────────────────────────────────
+// RENDER — MODEL PROPERTIES
+// ─────────────────────────────────────────────
+const numericProps = new Set(['Tables','Columns','Measures','Relationships','Hierarchies','Compatibility Level']);
+
+function renderProps() {
+  id('propsGrid').innerHTML = Object.entries(S.modelProps).map(([k,v]) => `
+    <div class="prop-card">
+      <div class="prop-lbl">${esc(k)}</div>
+      <div class="prop-val ${numericProps.has(k)?'big':''}">${esc(String(v))}</div>
+    </div>`).join('');
+}
+
+let propsOpen = true;
+function toggleProps() {
+  propsOpen = !propsOpen;
+  id('propsGrid').style.display = propsOpen ? 'grid' : 'none';
+  id('propsChevron').classList.toggle('open', propsOpen);
+}
+
+// ─────────────────────────────────────────────
+// SELECT TABLE
+// ─────────────────────────────────────────────
+function selectTable(tableId) {
+  S.selectedTableId = tableId;
+  S.currentTab = 'columns';
+  renderTableList();
+  const t = S.tables.find(x => x.ID === tableId);
+  id('welcomeScreen').style.display = 'none';
+  id('tblDetail').style.display = 'flex';
+  id('detailTableName').textContent = t.Name;
+  id('detailTableDesc').textContent = t.Description ? `— ${t.Description}` : '';
+
+  const cols  = colsFor(tableId);
+  const meas  = measFor(tableId);
+  const rels  = relsFor(tableId);
+  const hiers = hiersFor(tableId);
+  const parts = partsFor(tableId);
+
+  id('badgeCols').textContent  = cols.length;
+  id('badgeMeas').textContent  = meas.length;
+  id('badgeRels').textContent  = rels.length;
+  id('badgeHiers').textContent = hiers.length;
+  id('badgeParts').textContent = parts.length;
+
+  document.querySelectorAll('.tab').forEach(el => el.classList.toggle('active', el.dataset.tab === 'columns'));
+  renderTab('columns');
+}
+
+// ─────────────────────────────────────────────
+// TABS
+// ─────────────────────────────────────────────
+function switchTab(tab) {
+  S.currentTab = tab;
+  document.querySelectorAll('.tab').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
+  renderTab(tab);
+}
+
+function renderTab(tab) {
+  const tid = S.selectedTableId;
+  const body = id('tabBody');
+  switch(tab) {
+    case 'columns':       body.innerHTML = renderColumns(colsFor(tid));  break;
+    case 'measures':      body.innerHTML = renderMeasures(measFor(tid)); break;
+    case 'relationships': body.innerHTML = renderRels(relsFor(tid));     break;
+    case 'hierarchies':   body.innerHTML = renderHiers(hiersFor(tid));   break;
+    case 'partitions':    body.innerHTML = renderParts(partsFor(tid));   break;
+  }
+}
+
+// ─────────────────────────────────────────────
+// DATA HELPERS
+// ─────────────────────────────────────────────
+const tblName = id => { const t = S.tables.find(x=>x.ID==id); return t?t.Name:String(id); };
+const colsFor  = tid => S.columns.filter(c=>c.TableID==tid);
+const measFor  = tid => S.measures.filter(m=>m.TableID==tid);
+const relsFor  = tid => S.relationships.filter(r=>r.FromTableID==tid||r.ToTableID==tid);
+const hiersFor = tid => S.hierarchies.filter(h=>h.TableID==tid);
+const partsFor = tid => S.partitions.filter(p=>p.TableID==tid);
+
+function typeBadge(dt) {
+  if (!dt) return `<span class="badge b-other">—</span>`;
+  const d = String(dt).toLowerCase();
+  if (d==='string'||d==='8') return `<span class="badge b-str">String</span>`;
+  if (d==='integer'||d==='4'||d==='6'||d==='3') return `<span class="badge b-int">Integer</span>`;
+  if (d==='decimal'||d==='double'||d==='10'||d==='9') return `<span class="badge b-dec">Decimal</span>`;
+  if (d==='boolean'||d==='11') return `<span class="badge b-bool">Boolean</span>`;
+  if (d.includes('date')||d==='7') return `<span class="badge b-dt">DateTime</span>`;
+  return `<span class="badge b-other">${esc(dt)}</span>`;
+}
+
+function kindBadge(ct) {
+  if (!ct || ct==='Data') return `<span class="badge b-other">Data</span>`;
+  return `<span class="badge b-calc">Calculated</span>`;
+}
+
+// ─────────────────────────────────────────────
+// RENDER TABS
+// ─────────────────────────────────────────────
+function renderColumns(cols) {
+  if (!cols.length) return `<div class="empty">No columns in this table.</div>`;
+  return `<table class="dtable">
+    <thead><tr><th>Name</th><th>Data Type</th><th>Kind</th><th>Key</th><th>Visibility</th><th>Expression</th></tr></thead>
+    <tbody>${cols.map(c=>`<tr>
+      <td>${esc(c.Name)}</td>
+      <td>${typeBadge(c.DataType)}</td>
+      <td>${kindBadge(c.ColumnType)}</td>
+      <td>${c.IsKey?'<span class="badge b-warn">🔑 Key</span>':''}</td>
+      <td>${c.IsHidden?'<span class="hidden-tag">hidden</span>':'<span style="color:var(--success);font-size:11px">visible</span>'}</td>
+      <td>${c.Expression?`<span class="expr">${esc(c.Expression)}</span>`:''}</td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+
+function renderMeasures(meas) {
+  if (!meas.length) return `<div class="empty">No measures in this table.</div>`;
+  return `<table class="dtable">
+    <thead><tr><th>Name</th><th>Data Type</th><th>Format</th><th>Folder</th><th>Visibility</th><th>DAX Expression</th></tr></thead>
+    <tbody>${meas.map(m=>`<tr>
+      <td>${esc(m.Name)}</td>
+      <td>${typeBadge(m.DataType)}</td>
+      <td><code style="font-size:11px;color:var(--text-muted)">${esc(m.FormatString||'')}</code></td>
+      <td><span style="font-size:11px;color:var(--cyan)">${esc(m.DisplayFolder||'')}</span></td>
+      <td>${m.IsHidden?'<span class="hidden-tag">hidden</span>':'<span style="color:var(--success);font-size:11px">visible</span>'}</td>
+      <td><span class="expr">${esc(m.Expression||'')}</span></td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+
+function renderRels(rels) {
+  if (!rels.length) return `<div class="empty">No relationships for this table.</div>`;
+  const cardLabel = m => {
+    if (m==='ManyToOne') return ['*','1'];
+    if (m==='OneToMany') return ['1','*'];
+    if (m==='ManyToMany') return ['*','*'];
+    return ['1','1'];
+  };
+  return rels.map(r => {
+    const [fc,tc] = cardLabel(r.Multiplicity);
+    const isFrom  = r.FromTableID == S.selectedTableId;
+    return `<div class="rel-card">
+      <div class="rel-tables">
+        <span class="rel-tname">${esc(tblName(r.FromTableID))}</span>
+        <span class="rel-col">[${esc(r.FromColumnID)}]</span>
+        <span class="rel-arrow">${fc} ──→ ${tc}</span>
+        <span class="rel-tname">${esc(tblName(r.ToTableID))}</span>
+        <span class="rel-col">[${esc(r.ToColumnID)}]</span>
+        ${!isFrom?'<span class="badge b-other" style="font-size:9px;margin-left:4px">via this table</span>':''}
+      </div>
+      <div class="rel-meta">
+        <span class="meta-tag">${esc(r.Multiplicity)}</span>
+        <span class="meta-tag">${esc(r.CrossFilteringBehavior)}</span>
+        <span class="meta-tag ${r.IsActive?'b-green':'b-other'}">${r.IsActive?'Active':'Inactive'}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderHiers(hiers) {
+  if (!hiers.length) return `<div class="empty">No hierarchies in this table.</div>`;
+  return hiers.map(h => {
+    const levels = S.hierLevels.filter(l=>l.HierarchyID==h.ID).sort((a,b)=>a.Ordinal-b.Ordinal);
+    return `<div class="hier-card">
+      <div class="hier-title">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="color:var(--green)">
+          <path d="M1 2a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2zm5 0a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V2zm5 0a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1V2zM1 7a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V7zm5 0a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V7z"/>
+        </svg>
+        ${esc(h.Name)}
+        ${h.IsHidden?'<span class="hidden-tag">hidden</span>':''}
+        ${h.DisplayFolder?`<span style="font-size:10px;color:var(--text-muted);font-weight:400">${esc(h.DisplayFolder)}</span>`:''}
+      </div>
+      <div class="hier-levels">
+        ${levels.map((l,i)=>`<div class="hier-level">
+          <span class="hier-num">${i+1}</span>
+          <span class="hier-level-name">${esc(l.Name)}</span>
+          <span class="hier-col">→ [${esc(l.ColumnID)}]</span>
+        </div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderParts(parts) {
+  if (!parts.length) return `<div class="empty">No partitions found.</div>`;
+  return parts.map(p=>`<div class="part-card">
+    <div class="part-title">
+      <span class="part-name">${esc(p.Name)}</span>
+      <span class="meta-tag ${p.Mode==='DirectQuery'?'b-warn':''}">${esc(p.Mode)}</span>
+      <span class="meta-tag">${esc(p.Type)}</span>
+    </div>
+    ${p.QueryDefinition?`<pre class="query">${esc(p.QueryDefinition)}</pre>`:''}
+  </div>`).join('');
+}
+
+// ─────────────────────────────────────────────
+// BIM MODAL
+// ─────────────────────────────────────────────
+function openBimModal() {
+  id('bimPasteArea').value = '';
+  id('parseErr').style.display = 'none';
+  id('dropZoneLabel').innerHTML = 'Drop your <strong>.bim</strong> or <strong>.json</strong> file here';
+  id('bimFileInput').value = '';
+  id('bimOverlay').style.display = 'flex';
+  setTimeout(() => id('bimPasteArea').focus(), 60);
+}
+function closeBimModal()           { id('bimOverlay').style.display = 'none'; }
+function closeBimOnBackdrop(e)     { if (e.target === id('bimOverlay')) closeBimModal(); }
+function handleDragOver(e)         { e.preventDefault(); id('dropZone').classList.add('drag-over'); }
+function handleDragLeave()         { id('dropZone').classList.remove('drag-over'); }
+function handleDrop(e) {
+  e.preventDefault();
+  id('dropZone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) readBimFile(file);
+}
+function handleFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) readBimFile(file);
+}
+function readBimFile(file) {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    id('bimPasteArea').value = ev.target.result;
+    id('parseErr').style.display = 'none';
+    id('dropZoneLabel').textContent = 'Loaded: ' + file.name;
+  };
+  reader.readAsText(file);
+}
+
+function parseBimAndLoad() {
+  const raw = id('bimPasteArea').value.trim();
+  if (!raw) { showParseErr('Please paste JSON or upload a file first.'); return; }
+  let json;
+  try { json = JSON.parse(raw); }
+  catch(e) { showParseErr('Invalid JSON: ' + e.message); return; }
+  try {
+    const model = extractModel(json);
+    if (!model || !Array.isArray(model.tables)) {
+      throw new Error('Could not locate a "tables" array. Make sure this is a valid .bim / TMSL JSON file.');
+    }
+    applyBimModel(model, json);
+    closeBimModal();
+  } catch(e) {
+    showParseErr(e.message);
+  }
+}
+
+function showParseErr(msg) {
+  const el = id('parseErr');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+// ── Extract the model{} object from various wrapper formats
+function extractModel(json) {
+  if (json.model?.tables)                         return json.model;          // bare .bim
+  if (json.create?.database?.model)               return json.create.database.model; // TMSL create
+  if (json.alter?.database?.model)                return json.alter.database.model;  // TMSL alter
+  if (json.createOrReplace?.database?.model)      return json.createOrReplace.database.model;
+  if (json.database?.model)                       return json.database.model; // database wrapper
+  if (Array.isArray(json.tables))                 return json;                // model object directly
+  if (json.tables)                                return json;
+  return null;
+}
+
+// ── Map a parsed BIM model into state S and call onConnected()
+function applyBimModel(model, rootJson) {
+  const dbName = rootJson.name
+    || rootJson.create?.database?.name
+    || rootJson.alter?.database?.name
+    || rootJson.createOrReplace?.database?.name
+    || rootJson.database?.name
+    || model.name
+    || 'Imported Model';
+  const compat = rootJson.compatibilityLevel
+    || rootJson.create?.database?.compatibilityLevel
+    || model.compatibilityLevel
+    || '';
+
+  const tables = model.tables || [];
+
+  // Name-to-integer-ID map for relationships
+  const tblIdMap = {};
+  tables.forEach((t, i) => { tblIdMap[t.name] = i + 1; });
+
+  S.isDemo    = false;
+  S.serverUrl = '';
+  S.database  = dbName;
+
+  // Tables
+  S.tables = tables.map((t, i) => ({
+    ID:          i + 1,
+    Name:        t.name,
+    Description: t.description || '',
+    IsHidden:    !!t.isHidden,
+    TableType:   t.tableType || 'Regular'
+  }));
+
+  // Columns (skip internal RowNumber columns)
+  S.columns = [];
+  tables.forEach((t, ti) => {
+    (t.columns || []).forEach(c => {
+      if (c.type === 'rowNumber') return;
+      S.columns.push({
+        TableID:     ti + 1,
+        Name:        c.name,
+        Description: c.description || '',
+        DataType:    normBimDataType(c.dataType),
+        IsHidden:    !!c.isHidden,
+        IsKey:       !!(c.isKey || c.isUnique),
+        ColumnType:  c.type === 'calculated' ? 'Calculated' : 'Data',
+        Expression:  Array.isArray(c.expression) ? c.expression.join('\n') : (c.expression || null)
+      });
+    });
+  });
+
+  // Measures
+  S.measures = [];
+  tables.forEach((t, ti) => {
+    (t.measures || []).forEach(m => {
+      S.measures.push({
+        TableID:       ti + 1,
+        Name:          m.name,
+        Description:   m.description || '',
+        DataType:      normBimDataType(m.dataType),
+        IsHidden:      !!m.isHidden,
+        Expression:    Array.isArray(m.expression) ? m.expression.join('\n') : (m.expression || ''),
+        DisplayFolder: m.displayFolder || '',
+        FormatString:  m.formatString || ''
+      });
+    });
+  });
+
+  // Relationships
+  S.relationships = (model.relationships || []).map((r, i) => ({
+    ID:                     i + 1,
+    FromTableID:            tblIdMap[r.fromTable] ?? r.fromTable,
+    FromColumnID:           r.fromColumn,
+    ToTableID:              tblIdMap[r.toTable]   ?? r.toTable,
+    ToColumnID:             r.toColumn,
+    Multiplicity:           normBimCardinality(r.fromCardinality, r.toCardinality),
+    CrossFilteringBehavior: normBimCrossFilter(r.crossFilteringBehavior),
+    IsActive:               r.isActive !== false
+  }));
+
+  // Hierarchies + Levels
+  S.hierarchies = []; S.hierLevels = [];
+  let hId = 1;
+  tables.forEach((t, ti) => {
+    (t.hierarchies || []).forEach(h => {
+      S.hierarchies.push({
+        TableID:       ti + 1,
+        ID:            hId,
+        Name:          h.name,
+        Description:   h.description || '',
+        IsHidden:      !!h.isHidden,
+        DisplayFolder: h.displayFolder || ''
+      });
+      (h.levels || []).forEach(l => {
+        S.hierLevels.push({
+          HierarchyID: hId,
+          Name:        l.name,
+          Ordinal:     l.ordinal,
+          ColumnID:    l.column
+        });
+      });
+      hId++;
+    });
+  });
+
+  // Partitions
+  S.partitions = [];
+  tables.forEach((t, ti) => {
+    (t.partitions || []).forEach(p => {
+      const src  = p.source || {};
+      const expr = Array.isArray(src.expression)
+        ? src.expression.join('\n')
+        : (src.expression || p.queryDefinition || '');
+      S.partitions.push({
+        TableID:         ti + 1,
+        Name:            p.name,
+        Mode:            normBimMode(p.mode),
+        Type:            normBimPartType(src.type || p.type),
+        QueryDefinition: expr
+      });
+    });
+  });
+
+  // Model props
+  S.modelProps = {
+    'Source':        'Imported .bim / JSON',
+    'Database':      dbName,
+    ...(compat ? { 'Compatibility Level': String(compat) } : {}),
+    'Tables':        S.tables.length,
+    'Columns':       S.columns.length,
+    'Measures':      S.measures.length,
+    'Relationships': S.relationships.length,
+    'Hierarchies':   S.hierarchies.length,
+    'Partitions':    S.partitions.length,
+  };
+  if (model.defaultPowerBIDataSourceVersion) {
+    S.modelProps['PBI Data Source Version'] = model.defaultPowerBIDataSourceVersion;
+  }
+
+  onConnected();
+  // Override status pill to reflect file source
+  id('statusPill').innerHTML = '<span class="dot"></span>' + esc(dbName) + ' &mdash; from file';
+}
+
+// ── Normalisation helpers
+function normBimDataType(dt) {
+  if (!dt) return '';
+  const d = String(dt).toLowerCase();
+  if (['int64','int32','int16','uint8','wholeNumber'].includes(d)) return 'Integer';
+  if (['double','single','currency'].includes(d))                  return 'Decimal';
+  if (d === 'decimal')                                             return 'Decimal';
+  if (['string','text'].includes(d))                              return 'String';
+  if (d === 'boolean')                                             return 'Boolean';
+  if (['datetime','date'].includes(d))                            return 'DateTime';
+  if (d === 'binary')                                              return 'Binary';
+  return dt;
+}
+
+function normBimCardinality(from, to) {
+  from = (from || 'many').toLowerCase();
+  to   = (to   || 'one').toLowerCase();
+  if (from === 'many' && to === 'one')  return 'ManyToOne';
+  if (from === 'one'  && to === 'many') return 'OneToMany';
+  if (from === 'many' && to === 'many') return 'ManyToMany';
+  return 'ManyToOne';
+}
+
+function normBimCrossFilter(cf) {
+  if (!cf) return 'OneDirection';
+  const c = String(cf).toLowerCase();
+  if (c === 'bothdirections' || c === 'both') return 'BothDirections';
+  if (c === 'automatic')                       return 'Automatic';
+  return 'OneDirection';
+}
+
+function normBimMode(m) {
+  if (!m) return 'Import';
+  const lc = String(m).toLowerCase();
+  if (lc === 'directquery') return 'DirectQuery';
+  if (lc === 'dual')        return 'Dual';
+  if (lc === 'push')        return 'Push';
+  return 'Import';
+}
+
+function normBimPartType(t) {
+  if (!t) return 'M';
+  const lc = String(t).toLowerCase();
+  if (lc === 'm' || lc === 'powerquery') return 'M';
+  if (lc === 'query')                    return 'Query';
+  if (lc === 'calculated')               return 'Calculated';
+  return String(t);
+}
+
+// ─────────────────────────────────────────────
+// UTILS
+// ─────────────────────────────────────────────
+function id(x) { return document.getElementById(x); }
+function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function showErr(msg)  { const e=id('errBox'); e.textContent=msg; e.style.display='block'; }
+function clearErr()    { id('errBox').style.display='none'; }
+function setLoading(m) {
+  id('tableList').innerHTML = `<div class="loading-box"><div class="spinner"></div>${esc(m)}</div>`;
+}
+</script>
+</body>
+</html>

@@ -47,6 +47,8 @@ header{height:52px;background:var(--bg-secondary);border-bottom:1px solid var(--
 .header-actions{margin-left:auto;display:flex;gap:8px;align-items:center;}
 .btn-icon{width:32px;height:32px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.15s;}
 .btn-icon:hover{background:var(--bg-tertiary);color:var(--text-primary);}
+.local-badge{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:500;background:var(--success-dim);color:var(--success);border:1px solid rgba(63,185,80,0.2);letter-spacing:0.01em;cursor:default;white-space:nowrap;}
+.local-badge svg{flex-shrink:0;}
 
 /* ── LAYOUT ── */
 .app-body{display:flex;flex:1;overflow:hidden;}
@@ -162,6 +164,10 @@ header{height:52px;background:var(--bg-secondary);border-bottom:1px solid var(--
 .rel-arrow{color:var(--text-muted);font-size:12px;}
 .rel-meta{display:flex;gap:6px;flex-wrap:wrap;}
 .meta-tag{font-size:10.5px;padding:2px 7px;border-radius:4px;background:var(--bg-panel);color:var(--text-secondary);border:1px solid var(--border);}
+.rel-link{cursor:pointer;transition:opacity 0.15s;}
+.rel-link:hover{opacity:0.65;text-decoration:underline;text-underline-offset:2px;}
+@keyframes rowhl{0%{background:rgba(79,142,247,0.22);}100%{background:transparent;}}
+.row-hl{animation:rowhl 2s ease-out forwards;}
 
 /* Hierarchy */
 .hier-title{font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:7px;font-size:13px;}
@@ -233,6 +239,12 @@ pre.query{background:var(--bg-primary);border:1px solid var(--border);border-rad
   <div class="header-sep"></div>
   <div id="statusPill" class="status-pill"><span class="dot"></span>Not connected</div>
   <div class="header-actions">
+    <span class="local-badge" title="This application runs entirely in your browser. Uploaded .bim files and pasted JSON are never transmitted anywhere. The only outbound connections are: (1) loading the MSAL.js library from Microsoft's CDN on page load, and (2) authentication + metadata queries to your own Azure AS endpoint when you explicitly click Connect — both go directly to your own Azure resources.">
+      <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2zm3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
+      </svg>
+      Runs locally &mdash; no data leaves your browser
+    </span>
     <button class="btn-icon" title="Refresh metadata" onclick="refreshMetadata()" id="refreshBtn" style="display:none">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
         <path d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41zm-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9z"/>
@@ -455,7 +467,7 @@ async function runQuery(stmt) {
 
 async function loadMetadata() {
   S.tables        = await runQuery(`SELECT [ID],[Name],[Description],[IsHidden],[TableType] FROM $SYSTEM.TMSCHEMA_TABLES ORDER BY [Name]`);
-  S.columns       = await runQuery(`SELECT [TableID],[Name],[Description],[DataType],[IsHidden],[IsKey],[ColumnType],[Expression] FROM $SYSTEM.TMSCHEMA_COLUMNS`);
+  S.columns       = await runQuery(`SELECT [ID],[TableID],[Name],[Description],[DataType],[IsHidden],[IsKey],[ColumnType],[Expression] FROM $SYSTEM.TMSCHEMA_COLUMNS`);
   S.measures      = await runQuery(`SELECT [TableID],[Name],[Description],[DataType],[IsHidden],[Expression],[DisplayFolder],[FormatString] FROM $SYSTEM.TMSCHEMA_MEASURES`);
   S.relationships = await runQuery(`SELECT [ID],[FromTableID],[FromColumnID],[ToTableID],[ToColumnID],[Multiplicity],[CrossFilteringBehavior],[IsActive] FROM $SYSTEM.TMSCHEMA_RELATIONSHIPS`);
   S.hierarchies   = await runQuery(`SELECT [TableID],[ID],[Name],[Description],[IsHidden],[DisplayFolder] FROM $SYSTEM.TMSCHEMA_HIERARCHIES`);
@@ -779,6 +791,33 @@ const relsFor  = tid => S.relationships.filter(r=>r.FromTableID==tid||r.ToTableI
 const hiersFor = tid => S.hierarchies.filter(h=>h.TableID==tid);
 const partsFor = tid => S.partitions.filter(p=>p.TableID==tid);
 
+// Resolve a column reference (integer ID from DMV or string name from BIM) → column Name
+function resolveColName(tableId, colRef) {
+  const c = S.columns.find(x => x.TableID == tableId && (x.ID == colRef || x.Name === String(colRef)));
+  return c ? c.Name : String(colRef);
+}
+
+// JS-string escape for use inside onclick='...' attributes
+function jsq(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+
+// Navigate to a table's Columns tab and scroll-highlight the matching row
+function navigateToCol(tableId, colName) {
+  selectTable(tableId);
+  // selectTable always lands on 'columns' tab — just wait for DOM to settle
+  requestAnimationFrame(() => {
+    const rows = id('tabBody').querySelectorAll('tr[data-col]');
+    for (const row of rows) {
+      if (row.dataset.col === colName) {
+        row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        row.classList.remove('row-hl');   // reset so re-trigger works
+        void row.offsetWidth;             // force reflow
+        row.classList.add('row-hl');
+        break;
+      }
+    }
+  });
+}
+
 function typeBadge(dt) {
   if (!dt) return `<span class="badge b-other">—</span>`;
   const d = String(dt).toLowerCase();
@@ -802,7 +841,7 @@ function renderColumns(cols) {
   if (!cols.length) return `<div class="empty">No columns in this table.</div>`;
   return `<table class="dtable">
     <thead><tr><th>Name</th><th>Data Type</th><th>Kind</th><th>Key</th><th>Visibility</th><th>Expression</th></tr></thead>
-    <tbody>${cols.map(c=>`<tr>
+    <tbody>${cols.map(c=>`<tr data-col="${esc(c.Name)}">
       <td>${esc(c.Name)}</td>
       <td>${typeBadge(c.DataType)}</td>
       <td>${kindBadge(c.ColumnType)}</td>
@@ -837,15 +876,17 @@ function renderRels(rels) {
     return ['1','1'];
   };
   return rels.map(r => {
-    const [fc,tc] = cardLabel(r.Multiplicity);
-    const isFrom  = r.FromTableID == S.selectedTableId;
+    const [fc,tc]  = cardLabel(r.Multiplicity);
+    const isFrom   = r.FromTableID == S.selectedTableId;
+    const fromCol  = resolveColName(r.FromTableID, r.FromColumnID);
+    const toCol    = resolveColName(r.ToTableID,   r.ToColumnID);
     return `<div class="rel-card">
       <div class="rel-tables">
-        <span class="rel-tname">${esc(tblName(r.FromTableID))}</span>
-        <span class="rel-col">[${esc(r.FromColumnID)}]</span>
+        <span class="rel-tname rel-link" onclick="navigateToCol(${r.FromTableID},'${jsq(fromCol)}')" title="Go to ${esc(tblName(r.FromTableID))}">${esc(tblName(r.FromTableID))}</span>
+        <span class="rel-col rel-link"   onclick="navigateToCol(${r.FromTableID},'${jsq(fromCol)}')" title="Go to column ${esc(fromCol)}">[${esc(fromCol)}]</span>
         <span class="rel-arrow">${fc} ──→ ${tc}</span>
-        <span class="rel-tname">${esc(tblName(r.ToTableID))}</span>
-        <span class="rel-col">[${esc(r.ToColumnID)}]</span>
+        <span class="rel-tname rel-link" onclick="navigateToCol(${r.ToTableID},'${jsq(toCol)}')" title="Go to ${esc(tblName(r.ToTableID))}">${esc(tblName(r.ToTableID))}</span>
+        <span class="rel-col rel-link"   onclick="navigateToCol(${r.ToTableID},'${jsq(toCol)}')" title="Go to column ${esc(toCol)}">[${esc(toCol)}]</span>
         ${!isFrom?'<span class="badge b-other" style="font-size:9px;margin-left:4px">via this table</span>':''}
       </div>
       <div class="rel-meta">

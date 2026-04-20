@@ -273,6 +273,12 @@ pre.query{background:var(--bg-primary);border:1px solid var(--border);border-rad
         <path fill-rule="evenodd" d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5.002 5.002 0 0 0 8 3zM3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9H3.1z"/>
       </svg>
     </button>
+    <button class="btn-icon" title="Reset application (clears all data)" onclick="openResetModal()" id="resetBtn">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+        <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+      </svg>
+    </button>
   </div>
 </header>
 
@@ -416,6 +422,27 @@ pre.query{background:var(--bg-primary);border:1px solid var(--border);border-rad
     <div class="modal-footer">
       <button class="btn btn-secondary" style="width:auto;padding:7px 16px" onclick="closeBimModal()">Cancel</button>
       <button class="btn btn-primary" style="width:auto;padding:7px 20px" onclick="parseBimAndLoad()">Load Model</button>
+    </div>
+  </div>
+</div>
+
+<!-- RESET CONFIRM MODAL -->
+<div class="modal-overlay" id="resetOverlay" style="display:none" onclick="closeResetOnBackdrop(event)">
+  <div class="modal" style="width:440px">
+    <div class="modal-header">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" style="color:var(--error)">
+        <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
+      </svg>
+      <span class="modal-title">Reset application?</span>
+      <button class="modal-close" onclick="closeResetModal()">&#x2715;</button>
+    </div>
+    <div class="modal-body" style="padding:18px 20px;font-size:13px;color:var(--text-secondary);line-height:1.6">
+      This will clear <strong style="color:var(--text-primary)">everything</strong>: the currently loaded model, connection details, imported .bim data, diagram layout, selected table, and any other saved state in this browser session.
+      <div style="margin-top:10px">This action cannot be undone.</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" style="width:auto;padding:7px 16px" onclick="closeResetModal()">Cancel</button>
+      <button class="btn" style="width:auto;padding:7px 18px;background:var(--error);color:#fff" onclick="confirmReset()">Reset everything</button>
     </div>
   </div>
 </div>
@@ -1475,6 +1502,137 @@ function clearErr()    { id('errBox').style.display='none'; }
 function setLoading(m) {
   id('tableList').innerHTML = `<div class="loading-box"><div class="spinner"></div>${esc(m)}</div>`;
 }
+
+// ─────────────────────────────────────────────
+// SESSION PERSISTENCE
+// ─────────────────────────────────────────────
+const STORAGE_KEY = 'tabularExplorerState.v1';
+let _restoring = false;
+
+function saveState() {
+  if (_restoring) return;
+  try {
+    const snap = {
+      S: {
+        connected: S.connected, isDemo: S.isDemo,
+        serverUrl: S.serverUrl, database: S.database, tenantId: S.tenantId, clientId: S.clientId,
+        tables: S.tables, columns: S.columns, measures: S.measures,
+        relationships: S.relationships, hierarchies: S.hierarchies, hierLevels: S.hierLevels, partitions: S.partitions,
+        selectedTableId: S.selectedTableId, currentTab: S.currentTab,
+        modelProps: S.modelProps
+      },
+      D: { selId: D.selId, positions: D.positions, expanded: D.expanded },
+      propsOpen,
+      form: {
+        serverUrl: id('serverUrl').value,
+        dbName:    id('dbName').value,
+        tenantId:  id('tenantId').value,
+        clientId:  id('clientId').value
+      },
+      statusPillHTML: id('statusPill').innerHTML,
+      statusPillClass: id('statusPill').className,
+      demoBannerShown: id('demoBanner').style.display === 'flex'
+    };
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
+  } catch(e) { /* quota or serialization — ignore */ }
+}
+
+function restoreState() {
+  let raw;
+  try { raw = sessionStorage.getItem(STORAGE_KEY); } catch(e) { return; }
+  if (!raw) return;
+  let snap;
+  try { snap = JSON.parse(raw); } catch(e) { return; }
+
+  _restoring = true;
+  try {
+    // Form fields
+    if (snap.form) {
+      id('serverUrl').value = snap.form.serverUrl || '';
+      id('dbName').value    = snap.form.dbName    || '';
+      id('tenantId').value  = snap.form.tenantId  || '';
+      id('clientId').value  = snap.form.clientId  || '';
+    }
+
+    if (snap.S) Object.assign(S, snap.S);
+    if (snap.D) { D.selId = snap.D.selId; D.positions = snap.D.positions || {}; D.expanded = snap.D.expanded || {}; }
+    if (typeof snap.propsOpen === 'boolean') propsOpen = snap.propsOpen;
+
+    // If we had a loaded model, re-render UI without re-running network calls
+    if (S.tables && S.tables.length) {
+      // Mirror onConnected() rendering without resetting selectedTableId
+      const pill = id('statusPill');
+      if (snap.statusPillClass) pill.className = snap.statusPillClass;
+      if (snap.statusPillHTML)  pill.innerHTML = snap.statusPillHTML;
+      id('refreshBtn').style.display = 'flex';
+      id('demoBanner').style.display = snap.demoBannerShown ? 'flex' : 'none';
+      id('modelProps').style.display = 'block';
+      id('propsGrid').style.display = propsOpen ? 'grid' : 'none';
+      id('propsChevron').classList.toggle('open', propsOpen);
+      renderProps();
+      renderTableList();
+      if (S.selectedTableId != null && S.tables.find(t => t.ID === S.selectedTableId)) {
+        const prevTab = S.currentTab || 'diagram';
+        const savedD = { selId: D.selId, positions: { ...D.positions }, expanded: { ...D.expanded } };
+        selectTable(S.selectedTableId);
+        // selectTable() resets D — put saved layout back before rendering diagram
+        D.selId = savedD.selId; D.positions = savedD.positions; D.expanded = savedD.expanded;
+        if (prevTab !== 'diagram') switchTab(prevTab);
+        else renderDiagramView(S.selectedTableId);
+      } else {
+        id('welcomeScreen').style.display = 'flex';
+        id('tblDetail').style.display = 'none';
+      }
+    }
+  } finally {
+    _restoring = false;
+  }
+}
+
+// Wrap mutating functions so persistence is automatic
+(function hookPersistence() {
+  const wrap = (name) => {
+    const orig = window[name];
+    if (typeof orig !== 'function') return;
+    window[name] = function() {
+      const r = orig.apply(this, arguments);
+      if (r && typeof r.then === 'function') r.then(saveState, saveState);
+      else saveState();
+      return r;
+    };
+  };
+  ['onConnected','selectTable','switchTab','toggleProps','toggleEntityExpand',
+   'loadDemo','applyBimModel','refreshMetadata'].forEach(wrap);
+})();
+
+// Form input persistence
+['serverUrl','dbName','tenantId','clientId'].forEach(fid => {
+  document.addEventListener('DOMContentLoaded', () => {
+    const el = id(fid);
+    if (el) el.addEventListener('input', saveState);
+  });
+});
+
+// Persist drag positions at mouseup (piggyback on existing handlers)
+document.addEventListener('mouseup', () => {
+  // only save if diagram is present & something changed — cheap to just save
+  if (S.connected) saveState();
+});
+
+// ─────────────────────────────────────────────
+// RESET MODAL
+// ─────────────────────────────────────────────
+function openResetModal()         { id('resetOverlay').style.display = 'flex'; }
+function closeResetModal()        { id('resetOverlay').style.display = 'none'; }
+function closeResetOnBackdrop(e)  { if (e.target === id('resetOverlay')) closeResetModal(); }
+function confirmReset() {
+  try { sessionStorage.removeItem(STORAGE_KEY); } catch(e) {}
+  // Reload to get a completely clean slate
+  window.location.reload();
+}
+
+// Restore on page load
+document.addEventListener('DOMContentLoaded', restoreState);
 </script>
 </body>
 </html>

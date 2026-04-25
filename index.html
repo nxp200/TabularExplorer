@@ -1533,13 +1533,13 @@ function saveState() {
       statusPillClass: id('statusPill').className,
       demoBannerShown: id('demoBanner').style.display === 'flex'
     };
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
   } catch(e) { /* quota or serialization — ignore */ }
 }
 
 function restoreState() {
   let raw;
-  try { raw = sessionStorage.getItem(STORAGE_KEY); } catch(e) { return; }
+  try { raw = localStorage.getItem(STORAGE_KEY); } catch(e) { return; }
   if (!raw) return;
   let snap;
   try { snap = JSON.parse(raw); } catch(e) { return; }
@@ -1626,6 +1626,7 @@ function openResetModal()         { id('resetOverlay').style.display = 'flex'; }
 function closeResetModal()        { id('resetOverlay').style.display = 'none'; }
 function closeResetOnBackdrop(e)  { if (e.target === id('resetOverlay')) closeResetModal(); }
 function confirmReset() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
   try { sessionStorage.removeItem(STORAGE_KEY); } catch(e) {}
   // Reload to get a completely clean slate
   window.location.reload();
